@@ -2,31 +2,61 @@ using Godot;
 
 public partial class Friend : CharacterBody2D
 {
-    [Export] public float interactionRange = 100.0f;
+    [Export] public float interactionRange = 50.0f;
     [Export] public CharacterBody2D player;
+    [Export] public string conversationId = "friend_intro";
 
-    private bool _playerInRange;
+    private bool _inRange;
+    private bool _waitRelease; // blocks re-start until Space is released
 
     public override void _Process(double delta)
     {
         if (player == null) return;
 
-        bool isInRange = GlobalPosition.DistanceTo(player.GlobalPosition) <= interactionRange;
-        if (isInRange == _playerInRange) return; // no spam
+        // While dialogue is active, do nothing
+        if (DialogueManager.I != null && DialogueManager.I.IsActive) return;
 
-        _playerInRange = isInRange;
-
-        var panel = GetTree().Root.GetNode<Panel>("openWorld/CanvasLayer/Panel");
-        var label = panel.GetNode<Label>("Label");
-
-        if (_playerInRange)
+        // Debounce: if we're waiting for Space to be released, bail out
+        if (_waitRelease)
         {
-            label.Text = "Press SPACE to interact";
-            panel.Visible = true;
+            if (!Input.IsActionPressed("interact"))
+                _waitRelease = false; // released now; ready to accept a fresh press
+            else
+                return;
         }
-        else
+
+        bool nowInRange = GlobalPosition.DistanceTo(player.GlobalPosition) <= interactionRange;
+        if (nowInRange != _inRange)
         {
-            panel.Visible = false;
+            _inRange = nowInRange;
+            if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to interact");
+            else UIRoot.I.HidePrompt();
         }
+
+        if (_inRange && Input.IsActionJustPressed("interact"))
+        {
+            _waitRelease = true;       // block immediate re-trigger
+            UIRoot.I.HidePrompt();
+            StartFriendDialogue();
+        }
+    }
+
+    private void StartFriendDialogue()
+    {
+        if (DialogueManager.I == null)
+        {
+            GD.PushError("DialogueManager not found/autoloaded.");
+            return;
+        }
+
+        DialogueManager.I.Start(conversationId);
+        DialogueManager.I.Ended += OnDialogueEnded;
+    }
+
+    private void OnDialogueEnded()
+    {
+        _waitRelease = true; // require a fresh Space press after closing
+        if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to interact");
+        DialogueManager.I.Ended -= OnDialogueEnded;
     }
 }
