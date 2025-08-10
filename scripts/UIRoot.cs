@@ -19,6 +19,7 @@ public partial class UIRoot : CanvasLayer
 
     public override void _Ready()
     {
+        ProcessMode = ProcessModeEnum.WhenPaused;
         InteractionPanel.Visible = false;
         DialoguePanel.Visible = false;
     }

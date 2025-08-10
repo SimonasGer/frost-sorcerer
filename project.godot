@@ -17,7 +17,6 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-GameManager="*res://scripts/GameManager.cs"
 UI="*res://scenes/UI.tscn"
 Dialogue="*res://scripts/DialogueManager.cs"
 

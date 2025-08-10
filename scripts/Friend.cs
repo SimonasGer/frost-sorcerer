@@ -29,7 +29,7 @@ public partial class Friend : CharacterBody2D
         if (nowInRange != _inRange)
         {
             _inRange = nowInRange;
-            if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to interact");
+            if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to talk");
             else UIRoot.I.HidePrompt();
         }
 
@@ -56,7 +56,7 @@ public partial class Friend : CharacterBody2D
     private void OnDialogueEnded()
     {
         _waitRelease = true; // require a fresh Space press after closing
-        if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to interact");
+        if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to talk");
         DialogueManager.I.Ended -= OnDialogueEnded;
     }
 }

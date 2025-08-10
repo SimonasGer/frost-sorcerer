@@ -39,6 +39,12 @@ public partial class DialogueManager : Node
     private Action<int> _onChoose;
 
     public override void _EnterTree() => I = this;
+
+    public override void _Ready()
+    {
+        // Godot 4: keep receiving input while the tree is paused
+        ProcessMode = Node.ProcessModeEnum.WhenPaused;
+    }
     
     public override void _Input(InputEvent e)
     {
@@ -49,9 +55,20 @@ public partial class DialogueManager : Node
             if (_choices == null || _choices.Length == 0)
                 Advance();
         }
+
+        // Optional: number keys select choices
+        if (_choices != null && _choices.Length > 0)
+        {
+            for (int i = 0; i < _choices.Length && i < 9; i++)
+            {
+                if (Input.IsKeyPressed((Key)((int)Key.Key1 + i)))
+                {
+                    Choose(i);
+                    break;
+                }
+            }
+        }
     }
-
-
 
     // ===== Loading =====
     public void LoadFromJson(string resPath)
@@ -137,7 +154,7 @@ public partial class DialogueManager : Node
         _index = -1;
         _choices = null;
         _onChoose = null;
-        Advance(); // show first line
+        Advance();
     }
 
     public void Advance()
@@ -218,6 +235,7 @@ public partial class DialogueManager : Node
     {
         IsActive = false;
         UIRoot.I.HideDialogue();
+
         Ended?.Invoke();
     }
 
