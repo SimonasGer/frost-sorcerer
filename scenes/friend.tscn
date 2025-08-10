@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://df1ovxsgd8n0u"]
+
+[ext_resource type="Texture2D" uid="uid://dpys3s3ofxonf" path="res://sprites/spritePlayer.png" id="1_am7dx"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_s8sfs"]
+size = Vector2(15, 11)
+
+[node name="friend" type="CharacterBody2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(1, -15)
+texture = ExtResource("1_am7dx")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0.5, -5.5)
+shape = SubResource("RectangleShape2D_s8sfs")
