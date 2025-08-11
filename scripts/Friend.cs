@@ -2,40 +2,54 @@ using Godot;
 
 public partial class Friend : CharacterBody2D
 {
-    [Export] public float interactionRange = 50.0f;
-    [Export] public CharacterBody2D player;
     [Export] public string conversationId = "friend_intro";
 
     private bool _inRange;
-    private bool _waitRelease; // blocks re-start until Space is released
+    private bool _waitRelease; // require key release before re-trigger
+
+    public override void _Ready()
+    {
+        // Expect a child Area2D named "InteractArea" with a CollisionShape2D
+        var area = GetNode<Area2D>("InteractArea");
+        area.BodyEntered += OnBodyEntered;
+        area.BodyExited  += OnBodyExited;
+    }
+
+    private void OnBodyEntered(Node body)
+    {
+        if (!body.IsInGroup("player")) return;
+
+        _inRange = true;
+
+        // Don’t show prompt if dialogue is already active
+        if (DialogueManager.I == null || !DialogueManager.I.IsActive)
+            UIRoot.I.ShowPrompt("Press SPACE to talk");
+    }
+
+    private void OnBodyExited(Node body)
+    {
+        if (!body.IsInGroup("player")) return;
+
+        _inRange = false;
+        UIRoot.I.HidePrompt();
+    }
 
     public override void _Process(double delta)
     {
-        if (player == null) return;
+        if (DialogueManager.I != null && DialogueManager.I.IsActive)
+            return;
 
-        // While dialogue is active, do nothing
-        if (DialogueManager.I != null && DialogueManager.I.IsActive) return;
-
-        // Debounce: if we're waiting for Space to be released, bail out
+        // Debounce: wait for Space release after any interaction
         if (_waitRelease)
         {
             if (!Input.IsActionPressed("interact"))
-                _waitRelease = false; // released now; ready to accept a fresh press
-            else
-                return;
-        }
-
-        bool nowInRange = GlobalPosition.DistanceTo(player.GlobalPosition) <= interactionRange;
-        if (nowInRange != _inRange)
-        {
-            _inRange = nowInRange;
-            if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to talk");
-            else UIRoot.I.HidePrompt();
+                _waitRelease = false;
+            return;
         }
 
         if (_inRange && Input.IsActionJustPressed("interact"))
         {
-            _waitRelease = true;       // block immediate re-trigger
+            _waitRelease = true;
             UIRoot.I.HidePrompt();
             StartFriendDialogue();
         }
@@ -55,7 +69,7 @@ public partial class Friend : CharacterBody2D
 
     private void OnDialogueEnded()
     {
-        _waitRelease = true; // require a fresh Space press after closing
+        _waitRelease = true; // require fresh Space press
         if (_inRange) UIRoot.I.ShowPrompt("Press SPACE to talk");
         DialogueManager.I.Ended -= OnDialogueEnded;
     }

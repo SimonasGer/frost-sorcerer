@@ -24,9 +24,9 @@ sources/0 = SubResource("TileSetAtlasSource_lnu2h")
 [node name="player" parent="." groups=["player"] instance=ExtResource("1_uwrxv")]
 z_index = 5
 
-[node name="friend" parent="." node_paths=PackedStringArray("player") instance=ExtResource("3_lnu2h")]
+[node name="friend" parent="." instance=ExtResource("3_lnu2h")]
 position = Vector2(-232, 0)
-player = NodePath("../player")
+conversationId = "shop_talk"
 
 [node name="walls" type="TileMapLayer" parent="."]
 show_behind_parent = true

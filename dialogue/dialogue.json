@@ -1,0 +1,43 @@
+{
+  "conversations": {
+    "intro": [
+      {
+        "speaker": "Friend",
+        "text": "Hey there! Nice day, isn’t it?"
+      },
+      {
+        "speaker": "Player",
+        "text": "Sure is. What’s up?"
+      },
+      {
+        "speaker": "Friend",
+        "text": "Not much, just hanging around."
+      }
+    ],
+
+    "shop_talk": [
+      {
+        "speaker": "Shopkeeper",
+        "text": "Welcome to my shop!",
+        "choices": [
+          { "text": "Show me your wares.", "goto": "show_items" },
+          { "text": "Nevermind.", "goto": "goodbye" }
+        ]
+      }
+    ],
+
+    "show_items": [
+      {
+        "speaker": "Shopkeeper",
+        "text": "Here’s what I’ve got for sale."
+      }
+    ],
+
+    "goodbye": [
+      {
+        "speaker": "Shopkeeper",
+        "text": "Come back anytime!"
+      }
+    ]
+  }
+}

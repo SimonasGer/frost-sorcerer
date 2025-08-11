@@ -10,18 +10,18 @@ public partial class UIRoot : CanvasLayer
     [Export] public Label SpeakerLabel;
     [Export] public Label TextLabel;
     [Export] public VBoxContainer ChoicesVBox;
+
     public static UIRoot I { get; private set; }
 
-    public override void _EnterTree()
-    {
-        I = this; // set the global instance when the autoload enters the tree
-    }
+    public override void _EnterTree() => I = this;
 
     public override void _Ready()
     {
-        ProcessMode = ProcessModeEnum.WhenPaused;
         InteractionPanel.Visible = false;
         DialoguePanel.Visible = false;
+        Layer = 100; // keep UI on top
+        DialoguePanel.MouseFilter = Control.MouseFilterEnum.Stop;
+        ChoicesVBox.MouseFilter   = Control.MouseFilterEnum.Stop;
     }
 
     public void ShowPrompt(string text)
@@ -38,30 +38,46 @@ public partial class UIRoot : CanvasLayer
         SpeakerLabel.Text = speaker;
         TextLabel.Text = text;
         ClearChoices();
+
+        TogglePlayerMovement(false);
     }
 
     public void SetChoices(string[] choices, Action<int> onChoose)
     {
-        ClearChoices();
+        foreach (Node c in ChoicesVBox.GetChildren()) c.QueueFree();
         if (choices == null || choices.Length == 0) return;
 
         for (int i = 0; i < choices.Length; i++)
         {
-            var idx = i; // capture
-            var b = new Button { Text = $"{i+1}. {choices[i]}" };
-            b.Pressed += () => onChoose(idx);
-            ChoicesVBox.AddChild(b);
+            int idx = i;
+            var btn = new Button { Text = choices[i], SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            btn.Pressed += () => onChoose?.Invoke(idx);
+            ChoicesVBox.AddChild(btn);
         }
+
+        DialoguePanel.Visible = true;
     }
 
     public void HideDialogue()
     {
         DialoguePanel.Visible = false;
         ClearChoices();
+
+        TogglePlayerMovement(true);    // ← unfreeze player here
     }
 
     private void ClearChoices()
     {
         foreach (Node c in ChoicesVBox.GetChildren()) c.QueueFree();
+    }
+
+    private void TogglePlayerMovement(bool canMove)
+    {
+        // Assumes your Player node is in group "player"
+        foreach (var n in GetTree().GetNodesInGroup("player"))
+        {
+            // Works even if the script type isn't directly referenced:
+            n.Set("can_move", canMove);
+        }
     }
 }

@@ -8,100 +8,82 @@ public partial class DialogueManager : Node
     public static DialogueManager I { get; private set; }
 
     public bool IsActive { get; private set; }
-    public event Action Updated;   // UI listens (optional)
-    public event Action Ended;     // Player can re-enable movement
+    public event Action Updated;
+    public event Action Ended;
 
-    // ===== Data structures =====
-    private class ChoiceDef
-    {
-        public string text { get; set; }
-        public string @goto { get; set; }
-    }
-
+    private class ChoiceDef { public string text { get; set; } public string @goto { get; set; } }
     private class NodeDef
     {
         public string speaker { get; set; }
         public string text { get; set; }
         public List<ChoiceDef> choices { get; set; }
         public Dictionary<string, JsonElement> set { get; set; }
-        public string @goto { get; set; } // optional direct jump
+        public string @goto { get; set; }
     }
 
-    // conversations[id] -> list of nodes
-    private Dictionary<string, List<NodeDef>> _convos = new();
-    // simple global variables store
-    private Dictionary<string, JsonElement> _vars = new();
+    // Case-insensitive keys so "Intro" == "intro"
+    private readonly Dictionary<string, List<NodeDef>> _convos =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, JsonElement> _vars = new();
 
-    // current run state
     private List<NodeDef> _current;
     private int _index = -1;
     private string[] _choices;
-    private Action<int> _onChoose;
 
     public override void _EnterTree() => I = this;
 
     public override void _Ready()
     {
-        // Godot 4: keep receiving input while the tree is paused
-        ProcessMode = Node.ProcessModeEnum.WhenPaused;
+        if (UIRoot.I == null)
+            GD.PushError("[DM] UIRoot.I is null. Did you autoload UI.tscn?");
+        else
+            GD.Print($"[DM] Using UI at {UIRoot.I.GetPath()}");
+
+        LoadFromJson("res://dialogue/dialogue.json");
     }
-    
+
     public override void _Input(InputEvent e)
     {
         if (!IsActive) return;
 
+        // Advance on Space ONLY when no choices are shown
         if (e.IsActionPressed("interact"))
         {
             if (_choices == null || _choices.Length == 0)
                 Advance();
-        }
 
-        // Optional: number keys select choices
-        if (_choices != null && _choices.Length > 0)
-        {
-            for (int i = 0; i < _choices.Length && i < 9; i++)
-            {
-                if (Input.IsKeyPressed((Key)((int)Key.Key1 + i)))
-                {
-                    Choose(i);
-                    break;
-                }
-            }
+            // Godot 4: stop this input from bubbling to others
+            GetViewport().SetInputAsHandled();
+            return;
         }
     }
 
-    // ===== Loading =====
     public void LoadFromJson(string resPath)
     {
         try
         {
             using var f = FileAccess.Open(resPath, FileAccess.ModeFlags.Read);
-            var json = f.GetAsText();
-
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(f.GetAsText());
             var root = doc.RootElement;
 
             _convos.Clear();
             _vars.Clear();
 
-            // variables (optional)
             if (root.TryGetProperty("variables", out var vars))
-            {
                 foreach (var v in vars.EnumerateObject())
                     _vars[v.Name] = v.Value;
-            }
 
-            // conversations
-            var convosEl = root.GetProperty("conversations");
-            foreach (var convo in convosEl.EnumerateObject())
+            foreach (var convo in root.GetProperty("conversations").EnumerateObject())
             {
+                var key = convo.Name.Trim(); // normalize id
                 var list = new List<NodeDef>();
+
                 foreach (var n in convo.Value.EnumerateArray())
                 {
                     var node = new NodeDef
                     {
                         speaker = n.TryGetProperty("speaker", out var s) ? s.GetString() : "",
-                        text = n.TryGetProperty("text", out var t) ? t.GetString() : ""
+                        text    = n.TryGetProperty("text", out var t) ? t.GetString() : ""
                     };
 
                     if (n.TryGetProperty("choices", out var ch))
@@ -112,7 +94,7 @@ public partial class DialogueManager : Node
                             node.choices.Add(new ChoiceDef
                             {
                                 text = c.GetProperty("text").GetString(),
-                                @goto = c.GetProperty("goto").GetString()
+                                @goto = c.GetProperty("goto").GetString()?.Trim() // normalize target
                             });
                         }
                     }
@@ -125,63 +107,57 @@ public partial class DialogueManager : Node
                     }
 
                     if (n.TryGetProperty("goto", out var g))
-                        node.@goto = g.GetString();
+                        node.@goto = g.GetString()?.Trim(); // normalize inline goto
 
                     list.Add(node);
                 }
 
-                _convos[convo.Name] = list;
+                _convos[key] = list;
             }
 
-            GD.Print($"DialogueManager: loaded {_convos.Count} conversations from {resPath}");
+            GD.Print($"[DM] Loaded {_convos.Count} conversations from {resPath}");
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            GD.PushError($"DialogueManager: failed to load '{resPath}': {e.Message}");
+            GD.PushError($"[DM] Failed to load '{resPath}': {ex.Message}");
         }
     }
 
-    // ===== Running a conversation =====
     public void Start(string conversationId)
     {
-        if (!_convos.TryGetValue(conversationId, out _current))
+        conversationId = conversationId?.Trim();
+        if (string.IsNullOrEmpty(conversationId) ||
+            !_convos.TryGetValue(conversationId, out _current))
         {
-            GD.PushError($"Dialogue '{conversationId}' not found.");
+            GD.PushError($"[DM] Dialogue '{conversationId}' not found. Known: {string.Join(", ", _convos.Keys)}");
             return;
         }
 
         IsActive = true;
         _index = -1;
         _choices = null;
-        _onChoose = null;
         Advance();
     }
 
     public void Advance()
     {
         if (!IsActive) return;
-        if (_choices != null && _choices.Length > 0) return; // waiting for choice
+        if (_choices != null && _choices.Length > 0) return; // waiting for a choice
 
         _index++;
-        if (_index >= _current.Count)
-        {
-            End();
-            return;
-        }
+        if (_index >= _current.Count) { End(); return; }
 
         var n = _current[_index];
 
-        // apply variable sets (if any)
         if (n.set != null)
             foreach (var kv in n.set)
                 _vars[kv.Key] = kv.Value;
 
-        // handle direct goto
         if (!string.IsNullOrEmpty(n.@goto))
         {
             if (!_convos.TryGetValue(n.@goto, out _current))
             {
-                GD.PushError($"Dialogue goto '{n.@goto}' not found.");
+                GD.PushError($"[DM] goto '{n.@goto}' not found. Known: {string.Join(", ", _convos.Keys)}");
                 End();
                 return;
             }
@@ -190,21 +166,18 @@ public partial class DialogueManager : Node
             return;
         }
 
-        // display line
+        if (UIRoot.I == null) { GD.PushError("[DM] UIRoot.I missing."); return; }
+
         UIRoot.I.ShowDialogue(n.speaker ?? "", n.text ?? "");
         UIRoot.I.SetChoices(null, null);
         _choices = null;
-        _onChoose = null;
 
-        // present choices (if any)
         if (n.choices != null && n.choices.Count > 0)
         {
-            var arr = new string[n.choices.Count];
-            for (int i = 0; i < arr.Length; i++) arr[i] = n.choices[i].text;
-            _choices = arr;
-
-            // wire UI buttons to Choose()
-            UIRoot.I.SetChoices(_choices, Choose);
+            _choices = new string[n.choices.Count];
+            for (int i = 0; i < _choices.Length; i++) _choices[i] = n.choices[i].text;
+            GD.Print($"[DM] Presenting {_choices.Length} choices");
+            UIRoot.I.SetChoices(_choices, Choose); // buttons call back here
         }
 
         Updated?.Invoke();
@@ -212,21 +185,25 @@ public partial class DialogueManager : Node
 
     public void Choose(int index)
     {
+        GD.Print($"[DM] Choose({index})");
         if (_choices == null || index < 0 || index >= _choices.Length) return;
 
-        // resolve destination
         var node = _current[_index];
-        var dest = node.choices[index].@goto;
-        if (!_convos.TryGetValue(dest, out _current))
+        var dest = node.choices[index].@goto; // already trimmed on load
+        GD.Print($"[DM] goto -> '{dest}'");
+
+        if (string.IsNullOrEmpty(dest) || !_convos.TryGetValue(dest, out _current))
         {
-            GD.PushError($"Dialogue goto '{dest}' not found.");
-            End();
+            GD.PushError($"[DM] goto '{dest}' not found. Known: {string.Join(", ", _convos.Keys)}");
+            // stay on current node; clear choices so UI isn't stuck
+            _choices = null;
+            UIRoot.I.SetChoices(null, null);
+            Updated?.Invoke();
             return;
         }
 
         _index = -1;
         _choices = null;
-        _onChoose = null;
         UIRoot.I.SetChoices(null, null);
         Advance();
     }
@@ -234,33 +211,18 @@ public partial class DialogueManager : Node
     public void End()
     {
         IsActive = false;
-        UIRoot.I.HideDialogue();
-
+        if (UIRoot.I != null) UIRoot.I.HideDialogue();
         Ended?.Invoke();
     }
 
-    // ===== Convenience getters for variables (expand later) =====
-    public bool GetBool(string key, bool def = false)
-    {
-        if (_vars.TryGetValue(key, out var v))
-        {
-            if (v.ValueKind == JsonValueKind.True) return true;
-            if (v.ValueKind == JsonValueKind.False) return false;
-        }
-        return def;
-    }
+    // Variable helpers (kept for later)
+    public bool GetBool(string key, bool def = false) =>
+        _vars.TryGetValue(key, out var v) ? v.ValueKind == JsonValueKind.True ? true :
+        v.ValueKind == JsonValueKind.False ? false : def : def;
 
-    public string GetString(string key, string def = "")
-    {
-        if (_vars.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String)
-            return v.GetString();
-        return def;
-    }
+    public string GetString(string key, string def = "") =>
+        _vars.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : def;
 
-    public int GetInt(string key, int def = 0)
-    {
-        if (_vars.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
-            return i;
-        return def;
-    }
+    public int GetInt(string key, int def = 0) =>
+        _vars.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
 }

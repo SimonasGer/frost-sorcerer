@@ -70,6 +70,7 @@ offset_left = 192.0
 offset_top = 4.00002
 offset_right = 232.0
 offset_bottom = 44.0
+mouse_filter = 0
 
 [node name="FadeRect" type="Panel" parent="."]
 visible = false
